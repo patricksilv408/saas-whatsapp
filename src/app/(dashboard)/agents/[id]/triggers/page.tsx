@@ -93,7 +93,7 @@ export default function TriggersPage({ params }: { params: Promise<{ id: string 
               </div>
               <div className="space-y-1">
                 <Label>Tipo de Match</Label>
-                <Select value={newTrigger.match_type} onValueChange={v => setNewTrigger(p => ({...p, match_type: v}))}>
+                <Select value={newTrigger.match_type} onValueChange={v => setNewTrigger(p => ({...p, match_type: v ?? 'contains'}))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="contains">Contém</SelectItem>

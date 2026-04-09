@@ -50,7 +50,7 @@ export async function POST(
   const { event, data } = body
 
   if (event === 'connection') {
-    const state = data?.status || data?.state
+    const state = data?.status || (data as any)?.state
     if (state === 'open' || state === 'connected') {
       await admin.from('agents').update({ connection_status: 'connected' }).eq('id', agentId)
     } else if (state === 'close' || state === 'disconnected') {
@@ -209,5 +209,5 @@ async function saveInboundMessage(
       messageType.includes('location') ? 'location' : 'text',
     content: message?.conversation || message?.extendedTextMessage?.text || null,
     uazapi_message_id: messageId,
-  }).catch(() => {})
+  })
 }

@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
 
   if (fileType === 'pdf') {
     // Dynamic import to avoid edge runtime issues
-    const pdfParse = (await import('pdf-parse')).default
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
     const parsed = await pdfParse(Buffer.from(bytes))
     content = parsed.text
   } else {

@@ -256,7 +256,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ id: st
                 <Slider
                   min={1} max={30} step={1}
                   value={[form.message_debounce_seconds ?? 3]}
-                  onValueChange={([v]) => update('message_debounce_seconds', v)}
+                  onValueChange={(v) => update('message_debounce_seconds', Array.isArray(v) ? v[0] : v)}
                 />
                 <p className="text-xs text-muted-foreground">
                   Aguarda este tempo antes de processar, para juntar mensagens sequenciais
@@ -405,7 +405,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ id: st
                 <Slider
                   min={5} max={1440} step={5}
                   value={[form.chatbot_stop_minutes ?? 60]}
-                  onValueChange={([v]) => update('chatbot_stop_minutes', v)}
+                  onValueChange={(v) => update('chatbot_stop_minutes', Array.isArray(v) ? v[0] : v)}
                 />
               </div>
             </CardContent>

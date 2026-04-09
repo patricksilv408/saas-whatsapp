@@ -59,9 +59,9 @@ export class LLMService {
         function: {
           name: t.name,
           description: t.description,
-          parameters: t.parameters,
+          parameters: t.parameters as Record<string, unknown>,
         },
-      })),
+      })) as any,
       tool_choice: tools?.length ? 'auto' : undefined,
     })
 
