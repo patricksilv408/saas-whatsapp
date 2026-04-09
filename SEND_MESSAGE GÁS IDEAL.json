@@ -1,0 +1,448 @@
+{
+  "name": "SEND_MESSAGE GÁS IDEAL",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "pedido"
+            },
+            {
+              "name": "telefone"
+            },
+            {
+              "name": "instance"
+            },
+            {
+              "name": "token"
+            },
+            {
+              "name": "grupo"
+            },
+            {
+              "name": "id_supabase"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -256,
+        80
+      ],
+      "id": "0146327b-f56c-4660-840c-731b75dda8f7",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('When Executed by Another Workflow').item.json.instance }}/send/text",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{ $('When Executed by Another Workflow').item.json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $('When Executed by Another Workflow').item.json.grupo }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $('When Executed by Another Workflow').item.json.pedido }}"
+            },
+            {
+              "name": "delay",
+              "value": "3000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        544,
+        96
+      ],
+      "id": "6bdf2222-a44b-4f3a-b0c1-01a2965de51e",
+      "name": "sendText",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "clientes",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "telefone",
+              "keyValue": "={{ $json.telefone }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        80
+      ],
+      "id": "42ce0203-5811-41bd-aae4-761991f22a79",
+      "name": "Get a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "AZfV1P6e640Wg8iM",
+          "name": "Gás Ideal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "12079215-1f18-4057-905b-e55c0167d415",
+              "leftValue": "={{ $json.location }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        256,
+        80
+      ],
+      "id": "a120543c-1b25-45cf-a7b1-2fde62cb16a0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "tableId": "pedidos",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "cliente_id",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.id_supabase }}"
+            },
+            {
+              "fieldId": "observacoes",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.pedido }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        800,
+        96
+      ],
+      "id": "20724790-8efc-4898-bca1-30635e1a6c62",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "AZfV1P6e640Wg8iM",
+          "name": "Gás Ideal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('When Executed by Another Workflow').item.json.instance }}/send/location",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "token",
+              "value": "={{ $('When Executed by Another Workflow').item.json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $('When Executed by Another Workflow').item.json.grupo }}"
+            },
+            {
+              "name": "latitude",
+              "value": "={{ $('Get a row').item.json.latitude }}"
+            },
+            {
+              "name": "longitude",
+              "value": "={{ $('Get a row').item.json.longitude }}"
+            },
+            {
+              "name": "replyid",
+              "value": "={{ $json.messageid }}"
+            },
+            {
+              "name": "delay",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        656,
+        -160
+      ],
+      "id": "4c97d9af-a82a-4a08-bfc2-4f298c659f4f",
+      "name": "SendLocation"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('When Executed by Another Workflow').item.json.instance }}/send/text",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{ $('When Executed by Another Workflow').item.json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $('When Executed by Another Workflow').item.json.grupo }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $('When Executed by Another Workflow').item.json.pedido }}"
+            },
+            {
+              "name": "delay",
+              "value": "3000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        -160
+      ],
+      "id": "eb6f1ce1-5026-409c-9d85-e02544dc62e7",
+      "name": "sendText1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "tableId": "pedidos",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "cliente_id",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.id_supabase }}"
+            },
+            {
+              "fieldId": "observacoes",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.pedido }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        864,
+        -160
+      ],
+      "id": "3f201565-e6b6-41e9-b9e0-a82b0939f048",
+      "name": "Create a row1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "AZfV1P6e640Wg8iM",
+          "name": "Gás Ideal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Código para Node Function no n8n\n\nreturn [\n  {\n    json: {\n      parametro: \"pedido enviado a revenda\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        -160
+      ],
+      "id": "08c0a8b2-5cc1-4ab2-b35f-b145bd343072",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Código para Node Function no n8n\n\nreturn [\n  {\n    json: {\n      parametro: \"pedido enviado, solicite a localização fixa do cliente\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        96
+      ],
+      "id": "3e7fd1df-d2e1-46fc-bde1-6ef2dcdeb8a2",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "pedido": "*SOLICITAÇÃO DE ATENDIMENTO HUMANO* ⚠️\n\n*NOME:* Patrícia Souza Nunes / Elizete Souza Nunes\n*TELEFONE:* 557196849596\n*DÚVIDA/PROBLEMA:* Problema ao enviar pedido de 2 bujões P13 com pagamento dividido no cartão.",
+          "telefone": "557196849596",
+          "instance": "https://neuroai.uazapi.com",
+          "token": "5744e132-4427-4c97-819e-7c21f8466217",
+          "grupo": "120363403175153186@g.us",
+          "id_supabase": 55
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sendText": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a row": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "sendText1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "sendText",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sendText1": {
+      "main": [
+        [
+          {
+            "node": "SendLocation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendLocation": {
+      "main": [
+        [
+          {
+            "node": "Create a row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "d03867d5-a4fa-46e5-aa71-1c0887c0db08",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "840995f3876500828830d5855130da4da06d2bff1f155cf7b42b1d4e3c87ccd7"
+  },
+  "id": "03NTVctleuYe2Ai8",
+  "tags": []
+}
