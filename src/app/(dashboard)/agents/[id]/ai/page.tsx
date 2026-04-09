@@ -181,7 +181,7 @@ export default function AIConfigPage({ params }: { params: Promise<{ id: string 
                 <Slider
                   min={0} max={2} step={0.1}
                   value={[form.llm_temperature ?? 0.7]}
-                  onValueChange={([v]) => update('llm_temperature', v)}
+                  onValueChange={(v: number[]) => update('llm_temperature', v[0])}
                 />
               </div>
               <div className="space-y-2">
@@ -231,7 +231,7 @@ export default function AIConfigPage({ params }: { params: Promise<{ id: string 
                 <Slider
                   min={1} max={50} step={1}
                   value={[form.short_term_memory_turns ?? 10]}
-                  onValueChange={([v]) => update('short_term_memory_turns', v)}
+                  onValueChange={(v: number[]) => update('short_term_memory_turns', v[0])}
                 />
               </div>
             </CardContent>
@@ -255,7 +255,7 @@ export default function AIConfigPage({ params }: { params: Promise<{ id: string 
                   <Slider
                     min={10} max={100} step={5}
                     value={[form.long_term_memory_compress_every ?? 20]}
-                    onValueChange={([v]) => update('long_term_memory_compress_every', v)}
+                    onValueChange={(v: number[]) => update('long_term_memory_compress_every', v[0])}
                   />
                 </div>
               )}
