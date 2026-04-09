@@ -4,7 +4,8 @@ import { LLMService, LLMMessage, LLMTool } from '../services/llm.service'
 import { transcribeAudio } from '../services/stt.service'
 import { synthesizeSpeech } from '../services/tts.service'
 import { evaluate } from 'mathjs'
-import pdfParse from 'pdf-parse'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
