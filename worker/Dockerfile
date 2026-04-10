@@ -9,4 +9,4 @@ COPY . .
 
 ENV NODE_ENV=production
 
-CMD ["node", "--import", "tsx/esm", "index.ts"]
+CMD ["node_modules/.bin/tsx", "index.ts"]
