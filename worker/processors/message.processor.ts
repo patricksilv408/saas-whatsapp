@@ -423,15 +423,17 @@ export async function processMessage(data: JobData): Promise<void> {
     total_tokens_used: (agent.total_tokens_used || 0) + totalTokens,
   }).eq('id', data.agentId)
 
-  await sb.from('users').update({
-    messages_used_month: sb.rpc as any,
-  }).eq('id', data.userId)
-
-  // Simple increment (workaround for RPC limitation)
-  await getSupabase()
+  // Fetch current user counters and increment
+  const { data: userRow } = await sb
     .from('users')
-    .update({ messages_used_month: data.userId })
+    .select('messages_used_month, tokens_used_month')
     .eq('id', data.userId)
+    .single()
+
+  await sb.from('users').update({
+    messages_used_month: (userRow?.messages_used_month || 0) + 1,
+    tokens_used_month: (userRow?.tokens_used_month || 0) + totalTokens,
+  }).eq('id', data.userId)
 
   // Usage log
   await sb.from('usage_logs').insert({

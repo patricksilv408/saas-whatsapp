@@ -49,8 +49,9 @@ export async function POST(
   const body: UazAPIWebhookEvent = await req.json()
   const { event, data } = body
 
-  if (event === 'connection') {
-    const state = data?.status || (data as any)?.state
+  // UazAPI sends events as "connection.update", "messages.upsert", etc.
+  if (event === 'connection' || event === 'connection.update') {
+    const state = data?.status || (data as any)?.state || (data as any)?.connection
     if (state === 'open' || state === 'connected') {
       await admin.from('agents').update({ connection_status: 'connected' }).eq('id', agentId)
     } else if (state === 'close' || state === 'disconnected') {
@@ -67,8 +68,8 @@ export async function POST(
     return NextResponse.json({ ok: true })
   }
 
-  // Only process message events
-  if (event !== 'messages') return NextResponse.json({ ok: true })
+  // Only process message events (UazAPI sends "messages.upsert" or "messages")
+  if (event !== 'messages' && event !== 'messages.upsert') return NextResponse.json({ ok: true })
 
   const key = data?.key
   const messageType = data?.messageType

@@ -72,12 +72,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         const uazapi = createUazAPIClient(uazapiUrl, instanceToken, adminToken)
         await uazapi.connectInstance().catch(() => {})
 
-        // Step 3: register webhook
+        // Step 3: register webhook (with secret for validation)
         const appUrl = process.env.APP_URL || ''
         if (appUrl) {
-          await uazapi.registerWebhook(`${appUrl}/api/webhook/${id}`, [
-            'messages.upsert', 'connection.update', 'qrcode.updated',
-          ]).catch(() => {})
+          const webhookSecret = agent.webhook_secret || ''
+          await uazapi.registerWebhook(
+            `${appUrl}/api/webhook/${id}?secret=${webhookSecret}`,
+            ['messages.upsert', 'connection.update', 'qrcode.updated'],
+          ).catch(() => {})
         }
 
         // Step 4: poll for QR / connected status
