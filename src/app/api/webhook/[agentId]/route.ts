@@ -67,16 +67,23 @@ export async function POST(
   const maxMessages = userProfile?.plan?.max_messages_month ?? Infinity
   if (userProfile?.messages_used_month >= maxMessages) return NextResponse.json({ ok: true, reason: 'quota_exceeded' })
 
-  // Parse body — handle both single object and array wrapper
+  // Parse body — log raw text to debug actual UazAPI payload format
   const rawText = await req.text()
-  let parsed: any
-  try { parsed = JSON.parse(rawText) } catch { return NextResponse.json({ ok: true }) }
-  const body: UazAPIWebhookBody = Array.isArray(parsed) ? (parsed[0] || {}) : parsed
+  console.log(`[webhook] RAW BODY (${rawText.length}b):`, rawText.substring(0, 1000))
 
+  let parsed: any
+  try { parsed = JSON.parse(rawText) } catch (e) {
+    console.error(`[webhook] JSON parse failed:`, e)
+    return NextResponse.json({ ok: true })
+  }
+
+  console.log(`[webhook] isArray: ${Array.isArray(parsed)}, keys: ${Object.keys(parsed || {}).join(', ')}`)
+
+  const body: UazAPIWebhookBody = Array.isArray(parsed) ? (parsed[0] || {}) : parsed
   const event = body.event
   const data = body.data || {}
 
-  console.log(`[webhook] Agent ${agentId} — event: "${event}", chatid: ${data.chatid}, messageType: ${data.messageType}, fromMe: ${data.fromMe}`)
+  console.log(`[webhook] event: "${event}", data keys: ${Object.keys(data).join(', ')}`)
 
   // === CONNECTION EVENT ===
   if (event === 'connection') {
