@@ -59,7 +59,10 @@ export class UazAPIClient {
   }
 
   async getInstanceStatus() {
-    return this.request<{ state: string; qrcode?: string }>(`/instance/status`)
+    return this.request<{
+      instance: { status: string; qrcode?: string }
+      status: { connected: boolean; loggedIn: boolean }
+    }>(`/instance/status`)
   }
 
   async deleteInstance() {

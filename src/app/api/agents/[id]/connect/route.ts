@@ -95,19 +95,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
           attempts++
           try {
-            const status = await uazapi.getInstanceStatus()
+            const result = await uazapi.getInstanceStatus()
             errorCount = 0
 
-            if (status.state === 'open' || status.state === 'connected') {
+            if (result.status?.connected || result.status?.loggedIn) {
               await admin.from('agents').update({ connection_status: 'connected' }).eq('id', id)
               send({ type: 'connected' })
               controller.close()
               return
             }
-            if (status.qrcode) {
-              send({ type: 'qr', data: status.qrcode })
+            const qrRaw = result.instance?.qrcode || ''
+            if (qrRaw) {
+              // strip data:image/...;base64, prefix if present
+              const qrBase64 = qrRaw.includes(',') ? qrRaw.split(',')[1] : qrRaw
+              send({ type: 'qr', data: qrBase64 })
             } else {
-              send({ type: 'waiting', state: status.state })
+              send({ type: 'waiting', state: result.instance?.status })
             }
           } catch (err: any) {
             errorCount++
