@@ -22,27 +22,31 @@ export class UazAPIClient {
     options: RequestInit = {},
     useAdminToken = false
   ): Promise<T> {
-    const token = useAdminToken ? this.adminToken : this.token
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    }
+    if (useAdminToken) {
+      headers['admintoken'] = this.adminToken || ''
+    } else {
+      headers['token'] = this.token
+    }
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        token: token || '',
-        ...options.headers,
-      },
+      headers,
     })
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(`UazAPI ${path} failed (${res.status}): ${text}`)
+      throw new Error(`UazAPI ${path} failed (${res.status}): ${text}\n`)
     }
     return res.json()
   }
 
   // Instance management
-  async initInstance(instanceId: string) {
-    return this.request(`/instance/init`, {
+  async initInstance(name: string) {
+    return this.request<{ token: string; instance: { token: string } }>(`/instance/init`, {
       method: 'POST',
-      body: JSON.stringify({ instanceName: instanceId }),
+      body: JSON.stringify({ name }),
     }, true)
   }
 
