@@ -27,26 +27,63 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const uazapiUrl = getUazAPIBaseUrl(userProfile as any)
   const adminToken = getUazAPIAdminToken(userProfile as any)
-  const uazapi = createUazAPIClient(uazapiUrl, agent.uazapi_token || adminToken, adminToken)
 
-  // Return SSE stream for QR code
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: object) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)) } catch {}
       }
 
       try {
-        // Update status
         await admin.from('agents').update({ connection_status: 'connecting' }).eq('id', id)
 
-        // Trigger connection
+        let instanceToken = agent.uazapi_token as string | null
+
+        // Step 1: create instance if it doesn't exist yet
+        if (!instanceToken) {
+          const adminClient = createUazAPIClient(uazapiUrl, adminToken, adminToken)
+          let initResult: any
+          try {
+            initResult = await adminClient.initInstance(id)
+          } catch (err: any) {
+            send({ type: 'error', message: `Falha ao criar instância: ${err.message}` })
+            await admin.from('agents').update({ connection_status: 'disconnected' }).eq('id', id)
+            controller.close()
+            return
+          }
+
+          // UazAPI returns { token, instanceName, ... }
+          instanceToken = initResult?.token || initResult?.Token || null
+          if (!instanceToken) {
+            send({ type: 'error', message: 'UazAPI não retornou token da instância' })
+            await admin.from('agents').update({ connection_status: 'disconnected' }).eq('id', id)
+            controller.close()
+            return
+          }
+
+          await admin.from('agents').update({
+            uazapi_token: instanceToken,
+            uazapi_instance_id: id,
+          }).eq('id', id)
+        }
+
+        // Step 2: connect instance (trigger QR generation)
+        const uazapi = createUazAPIClient(uazapiUrl, instanceToken, adminToken)
         await uazapi.connectInstance().catch(() => {})
 
-        // Poll for QR/status
+        // Step 3: register webhook
+        const appUrl = process.env.APP_URL || ''
+        if (appUrl) {
+          await uazapi.registerWebhook(`${appUrl}/api/webhook/${id}`, [
+            'messages.upsert', 'connection.update', 'qrcode.updated',
+          ]).catch(() => {})
+        }
+
+        // Step 4: poll for QR / connected status
         let attempts = 0
-        const maxAttempts = 30
+        const maxAttempts = 40
+        let errorCount = 0
 
         const poll = async () => {
           if (attempts >= maxAttempts) {
@@ -59,6 +96,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           attempts++
           try {
             const status = await uazapi.getInstanceStatus()
+            errorCount = 0
+
             if (status.state === 'open' || status.state === 'connected') {
               await admin.from('agents').update({ connection_status: 'connected' }).eq('id', id)
               send({ type: 'connected' })
@@ -70,16 +109,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             } else {
               send({ type: 'waiting', state: status.state })
             }
-          } catch {
-            send({ type: 'error', message: 'Erro ao verificar status' })
+          } catch (err: any) {
+            errorCount++
+            if (errorCount >= 5) {
+              send({ type: 'error', message: 'Erro persistente ao verificar status' })
+              await admin.from('agents').update({ connection_status: 'disconnected' }).eq('id', id)
+              controller.close()
+              return
+            }
           }
 
           setTimeout(poll, 5000)
         }
 
         setTimeout(poll, 2000)
-      } catch (err) {
-        send({ type: 'error', message: 'Falha ao iniciar conexão' })
+      } catch (err: any) {
+        send({ type: 'error', message: `Falha ao iniciar conexão: ${err.message}` })
+        await admin.from('agents').update({ connection_status: 'disconnected' }).eq('id', id)
         controller.close()
       }
     },
