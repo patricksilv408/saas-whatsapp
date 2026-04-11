@@ -29,8 +29,11 @@ export async function POST(
     .eq('id', agentId)
     .single()
 
+  console.log(`[webhook] Received event for agent ${agentId}`)
+
   if (!agent) return NextResponse.json({ ok: false, reason: 'not_found' }, { status: 404 })
   if (agent.webhook_secret !== secret) {
+    console.warn(`[webhook] Invalid secret for agent ${agentId}`)
     return NextResponse.json({ ok: false, reason: 'invalid_secret' }, { status: 401 })
   }
   if (!agent.is_active) return NextResponse.json({ ok: true, reason: 'agent_inactive' })
@@ -48,6 +51,7 @@ export async function POST(
   // Handle connection events (reconnection logic)
   const body: UazAPIWebhookEvent = await req.json()
   const { event, data } = body
+  console.log(`[webhook] Agent ${agentId} — event: "${event}", messageType: ${data?.messageType}, fromMe: ${data?.key?.fromMe}`)
 
   // UazAPI events: "connection", "messages" (addUrlEvents: false)
   if (event === 'connection' || event === 'connection.update') {
@@ -186,7 +190,13 @@ export async function POST(
   const debounceMs = (agent.message_debounce_seconds || 3) * 1000
   const jobId = `msg-${agentId}-${phone}-${Date.now()}`
 
-  await enqueueMessage(jobId, jobData, debounceMs)
+  try {
+    await enqueueMessage(jobId, jobData, debounceMs)
+    console.log(`[webhook] Enqueued job ${jobId} for agent ${agentId}, phone ${phone}`)
+  } catch (err: any) {
+    console.error(`[webhook] Failed to enqueue message:`, err?.message)
+    return NextResponse.json({ ok: false, reason: 'queue_error' }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }
