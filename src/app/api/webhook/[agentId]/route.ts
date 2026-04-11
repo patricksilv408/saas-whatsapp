@@ -3,42 +3,41 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { enqueueMessage } from '@/lib/queue'
 import { MessageJobData } from '@/types'
 
-// UazAPI real payload format (flat structure — NOT Baileys format)
-interface UazAPIMessage {
-  // Identification
-  id?: string          // internal UazAPI ID (e.g. "r8a8abef76b3dc3")
-  messageid?: string   // original WhatsApp message ID
-  chatid?: string      // conversation JID (e.g. "5511...@s.whatsapp.net" or "...@g.us")
-  sender?: string      // sender JID
-  senderName?: string  // display name (pushName)
+// UazAPI WebhookEvent schema (from openapi spec):
+// { event: "message"|"connection"|"status"|"presence"|"group", instance: string, data: object }
+//
+// data for event="message" → Message schema:
+//   chatid, sender, senderName, fromMe, isGroup, messageType, text,
+//   messageid, id, messageTimestamp, content, wasSentByApi, ...
+//
+// data for event="connection" → { status: "connected"|"disconnected"|"open"|"close", ... }
 
-  // Flags
-  isGroup?: boolean
-  fromMe?: boolean
-
-  // Content
-  messageType?: string // "conversation", "imageMessage", "audioMessage", etc.
-  text?: string        // the text content (all types resolved by UazAPI)
-  source?: string
-
-  // Media (when messageType != conversation)
-  mediaUrl?: string
-  mediaMimetype?: string
-
-  // Timing
-  messageTimestamp?: number
-
-  // Connection event fields
-  status?: string      // "connected", "disconnected", "open", "close"
-  connection?: string  // alternative field for connection state
+interface UazAPIWebhookBody {
+  event?: string      // "message" | "connection" | "status" | "presence" | "group"
+  instance?: string
+  data?: {
+    // Message fields
+    id?: string
+    messageid?: string
+    chatid?: string
+    sender?: string
+    senderName?: string
+    isGroup?: boolean
+    fromMe?: boolean
+    messageType?: string
+    text?: string
+    messageTimestamp?: number
+    wasSentByApi?: boolean
+    content?: any
+    // Connection fields
+    status?: string
+    connection?: string
+    state?: string
+  }
 }
 
-// Message types to ignore
 const IGNORED_MESSAGE_TYPES = new Set([
-  'protocolMessage',
-  'ephemeralMessage',
-  'reactionMessage',
-  'pollUpdateMessage',
+  'protocolMessage', 'ephemeralMessage', 'reactionMessage', 'pollUpdateMessage',
 ])
 
 export async function POST(
@@ -50,8 +49,6 @@ export async function POST(
   const secret = searchParams.get('secret')
 
   const admin = createAdminClient()
-
-  // Fetch agent + validate secret
   const { data: agent } = await admin
     .from('agents')
     .select('*, user:users(id, is_active, messages_used_month, plan:plans(max_messages_month))')
@@ -65,36 +62,26 @@ export async function POST(
   }
   if (!agent.is_active) return NextResponse.json({ ok: true, reason: 'agent_inactive' })
 
-  // Check user quota
   const userProfile = (agent.user as any)
-  if (userProfile && !userProfile.is_active) {
-    return NextResponse.json({ ok: true, reason: 'user_inactive' })
-  }
+  if (userProfile && !userProfile.is_active) return NextResponse.json({ ok: true, reason: 'user_inactive' })
   const maxMessages = userProfile?.plan?.max_messages_month ?? Infinity
-  if (userProfile?.messages_used_month >= maxMessages) {
-    return NextResponse.json({ ok: true, reason: 'quota_exceeded' })
-  }
+  if (userProfile?.messages_used_month >= maxMessages) return NextResponse.json({ ok: true, reason: 'quota_exceeded' })
 
-  // Parse body — log raw text first to understand actual UazAPI payload
+  // Parse body — handle both single object and array wrapper
   const rawText = await req.text()
-  console.log(`[webhook] RAW (${rawText.length} bytes):`, rawText.substring(0, 800))
+  let parsed: any
+  try { parsed = JSON.parse(rawText) } catch { return NextResponse.json({ ok: true }) }
+  const body: UazAPIWebhookBody = Array.isArray(parsed) ? (parsed[0] || {}) : parsed
 
-  let body: any = {}
-  try { body = JSON.parse(rawText) } catch { body = {} }
+  const event = body.event
+  const data = body.data || {}
 
-  // If it's an array, take the first element
-  if (Array.isArray(body)) {
-    console.log(`[webhook] Body is ARRAY with ${body.length} items, taking body[0]`)
-    body = body[0] || {}
-  }
-
-  console.log(`[webhook] Agent ${agentId} — keys: ${Object.keys(body).join(', ')}`)
+  console.log(`[webhook] Agent ${agentId} — event: "${event}", chatid: ${data.chatid}, messageType: ${data.messageType}, fromMe: ${data.fromMe}`)
 
   // === CONNECTION EVENT ===
-  // Connection payloads have status/connection but no chatid
-  if (body.status || body.connection) {
-    const state = body.status || body.connection
-    console.log(`[webhook] Connection event: ${state}`)
+  if (event === 'connection') {
+    const state = data.status || data.connection || data.state
+    console.log(`[webhook] Connection state: ${state}`)
     if (state === 'open' || state === 'connected') {
       await admin.from('agents').update({ connection_status: 'connected' }).eq('id', agentId)
     } else if (state === 'close' || state === 'disconnected') {
@@ -111,10 +98,13 @@ export async function POST(
   }
 
   // === MESSAGE EVENT ===
-  const chatId = body.chatid || ''
-  const fromMe = body.fromMe ?? false
-  const messageType = body.messageType || ''
-  const text = body.text || ''
+  if (event !== 'message') return NextResponse.json({ ok: true })
+
+  const chatId = data.chatid || ''
+  const fromMe = data.fromMe ?? false
+  const messageType = data.messageType || ''
+  const text = data.text || ''
+  const isGroup = data.isGroup ?? chatId.endsWith('@g.us')
 
   if (!chatId || !messageType) {
     console.log(`[webhook] Skipping — no chatid or messageType`)
@@ -122,9 +112,7 @@ export async function POST(
   }
   if (IGNORED_MESSAGE_TYPES.has(messageType)) return NextResponse.json({ ok: true })
 
-  const isGroup = chatId.endsWith('@g.us')
-
-  // fromMe = true → agent owner sent manually
+  // fromMe = agent owner sent manually → human handoff
   if (fromMe) {
     const phone = isGroup ? chatId : chatId.replace('@s.whatsapp.net', '')
     if (text.trim().toLowerCase() === agent.human_resume_command?.toLowerCase()) {
@@ -155,34 +143,37 @@ export async function POST(
   const { data: customer } = await admin
     .from('customers')
     .select('id, is_blocked, chatbot_disabled_until')
-    .eq('agent_id', agentId)
-    .eq('phone', phone)
+    .eq('agent_id', agentId).eq('phone', phone)
     .maybeSingle()
 
   if (customer?.is_blocked) return NextResponse.json({ ok: true, reason: 'blocked' })
-
-  if (customer?.chatbot_disabled_until) {
-    const disabledUntil = new Date(customer.chatbot_disabled_until)
-    if (disabledUntil > new Date()) {
-      return NextResponse.json({ ok: true, reason: 'human_takeover' })
-    }
+  if (customer?.chatbot_disabled_until && new Date(customer.chatbot_disabled_until) > new Date()) {
+    return NextResponse.json({ ok: true, reason: 'human_takeover' })
   }
 
-  // Build job data using UazAPI flat fields
+  // Detect media URL from content object if present
+  let mediaUrl: string | null = null
+  let mediaMimeType: string | null = null
+  if (data.content && typeof data.content === 'object') {
+    const c = data.content as any
+    mediaUrl = c.url || c.mediaUrl || null
+    mediaMimeType = c.mimetype || c.mimeType || null
+  }
+
   const jobData: MessageJobData = {
     agentId,
     userId: agent.user_id,
     chatId,
     phone,
-    pushName: body.senderName || null,
+    pushName: data.senderName || null,
     isGroup,
     groupJid: isGroup ? chatId : null,
-    messageId: body.messageid || body.id || '',
+    messageId: data.messageid || data.id || '',
     messageType,
     content: text || null,
-    mediaUrl: body.mediaUrl || null,
-    mediaMimeType: body.mediaMimetype || null,
-    receivedAt: body.messageTimestamp || Date.now(),
+    mediaUrl,
+    mediaMimeType,
+    receivedAt: data.messageTimestamp || Date.now(),
   }
 
   const debounceMs = (agent.message_debounce_seconds || 3) * 1000
@@ -190,9 +181,9 @@ export async function POST(
 
   try {
     await enqueueMessage(jobId, jobData, debounceMs)
-    console.log(`[webhook] ✅ Enqueued job ${jobId} — agent ${agentId}, phone ${phone}, text: "${text.substring(0, 50)}"`)
+    console.log(`[webhook] ✅ Enqueued — phone: ${phone}, text: "${text.substring(0, 60)}"`)
   } catch (err: any) {
-    console.error(`[webhook] ❌ Failed to enqueue:`, err?.message)
+    console.error(`[webhook] ❌ Queue error:`, err?.message)
     return NextResponse.json({ ok: false, reason: 'queue_error' }, { status: 500 })
   }
 
