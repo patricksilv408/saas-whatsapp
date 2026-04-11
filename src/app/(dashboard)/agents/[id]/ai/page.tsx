@@ -11,8 +11,9 @@ import { Slider } from '@/components/ui/slider'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Save, Upload, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Save, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
 import { Agent, KnowledgeItem, Product, AgentFunction } from '@/types'
+import { toast } from 'sonner'
 
 const MODELS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
@@ -60,13 +61,27 @@ export default function AIConfigPage({ params }: { params: Promise<{ id: string 
     const body: Record<string, unknown> = { ...form }
     if (apiKey.trim()) body.llm_api_key = apiKey.trim()
 
-    await fetch(`/api/agents/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    setSaving(false)
-    setApiKey('')
+    try {
+      const res = await fetch(`/api/agents/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setAgent(updated)
+        setForm(updated)
+        setApiKey('')
+        toast.success('Configurações salvas com sucesso')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Erro ao salvar configurações')
+      }
+    } catch {
+      toast.error('Erro de conexão ao salvar')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleKbUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -78,14 +93,34 @@ export default function AIConfigPage({ params }: { params: Promise<{ id: string 
     formData.append('file', file)
     formData.append('agentId', id)
 
-    await fetch('/api/upload/knowledge', { method: 'POST', body: formData })
-    await loadData()
-    setUploadingKb(false)
+    try {
+      const res = await fetch('/api/upload/knowledge', { method: 'POST', body: formData })
+      if (res.ok) {
+        toast.success('Documento adicionado com sucesso')
+        await loadData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Erro ao fazer upload do documento')
+      }
+    } catch {
+      toast.error('Erro de conexão ao fazer upload')
+    } finally {
+      setUploadingKb(false)
+    }
   }
 
   async function deleteKbItem(itemId: string) {
-    await fetch(`/api/agents/${id}/knowledge/${itemId}`, { method: 'DELETE' })
-    setKnowledgeItems((prev) => prev.filter((i) => i.id !== itemId))
+    try {
+      const res = await fetch(`/api/agents/${id}/knowledge/${itemId}`, { method: 'DELETE' })
+      if (res.ok) {
+        setKnowledgeItems((prev) => prev.filter((i) => i.id !== itemId))
+        toast.success('Documento removido')
+      } else {
+        toast.error('Erro ao remover documento')
+      }
+    } catch {
+      toast.error('Erro de conexão')
+    }
   }
 
   function update(field: string, value: unknown) {

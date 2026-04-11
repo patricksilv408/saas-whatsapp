@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Loader2, QrCode, Wifi, WifiOff, RefreshCw, Save } from 'lucide-react'
 import { Agent } from '@/types'
+import { toast } from 'sonner'
 
 export default function AgentSettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -40,15 +41,25 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ id: st
 
   async function handleSave() {
     setSaving(true)
-    const res = await fetch(`/api/agents/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    })
-    setSaving(false)
-    if (res.ok) {
-      const updated = await res.json()
-      setAgent(updated)
+    try {
+      const res = await fetch(`/api/agents/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setAgent(updated)
+        setForm(updated)
+        toast.success('Configurações salvas')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Erro ao salvar')
+      }
+    } catch {
+      toast.error('Erro de conexão ao salvar')
+    } finally {
+      setSaving(false)
     }
   }
 

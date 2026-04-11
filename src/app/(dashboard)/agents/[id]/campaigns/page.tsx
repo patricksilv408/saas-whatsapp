@@ -40,7 +40,7 @@ export default function CampaignsPage({ params }: { params: Promise<{ id: string
         const res = await fetch(`/api/agents/${agentId}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone, message }),
+          body: JSON.stringify({ customerPhone: phone, text: message }),
         })
         if (res.ok) {
           newResults.push({ phone, success: true })

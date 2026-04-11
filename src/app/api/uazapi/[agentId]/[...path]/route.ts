@@ -35,7 +35,7 @@ async function handler(
   })
 
   const headers: Record<string, string> = {
-    'apikey': agent.uazapi_token || '',
+    'token': agent.uazapi_token || '',
     'Content-Type': 'application/json',
   }
 

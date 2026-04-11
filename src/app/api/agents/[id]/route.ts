@@ -49,16 +49,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const updateData: Record<string, unknown> = {}
   const encryptableFields = ['llm_api_key', 'elevenlabs_api_key']
 
+  // Virtual/read-only fields that must never be written to the DB
+  const readOnlyFields = [
+    'id', 'user_id', 'created_at', 'updated_at',
+    'webhook_secret', 'uazapi_token',
+    'has_llm_api_key', 'has_elevenlabs_api_key',
+    'llm_api_key_encrypted', 'elevenlabs_api_key_encrypted',
+  ]
+
   for (const [key, value] of Object.entries(body)) {
     if (encryptableFields.includes(key)) {
       // Encrypt API keys
       if (value && typeof value === 'string' && value.trim()) {
-        const encField = `${key}_encrypted`
-        updateData[encField] = encryptKey(value as string)
+        try {
+          const encField = `${key}_encrypted`
+          updateData[encField] = encryptKey(value as string)
+        } catch {
+          return NextResponse.json({ error: 'Falha ao criptografar chave de API. Verifique ENCRYPTION_SECRET.' }, { status: 500 })
+        }
       }
-    } else if (
-      !['id', 'user_id', 'created_at', 'webhook_secret', 'uazapi_token'].includes(key)
-    ) {
+    } else if (!readOnlyFields.includes(key)) {
       updateData[key] = value
     }
   }
