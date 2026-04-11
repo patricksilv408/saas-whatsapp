@@ -78,7 +78,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           const webhookSecret = agent.webhook_secret || ''
           await uazapi.registerWebhook(
             `${appUrl}/api/webhook/${id}?secret=${webhookSecret}`,
-            ['messages.upsert', 'connection.update', 'qrcode.updated'],
+            ['messages', 'connection'],
           ).catch(() => {})
         }
 

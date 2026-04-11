@@ -49,7 +49,7 @@ export async function POST(
   const body: UazAPIWebhookEvent = await req.json()
   const { event, data } = body
 
-  // UazAPI sends events as "connection.update", "messages.upsert", etc.
+  // UazAPI events: "connection", "messages" (addUrlEvents: false)
   if (event === 'connection' || event === 'connection.update') {
     const state = data?.status || (data as any)?.state || (data as any)?.connection
     if (state === 'open' || state === 'connected') {

@@ -88,7 +88,9 @@ export class UazAPIClient {
       body: JSON.stringify({
         url: webhookUrl,
         events,
-        addUrlEvents: true,
+        action: 'add',
+        addUrlEvents: false,
+        addUrlTypesMessages: false,
       }),
     })
   }
