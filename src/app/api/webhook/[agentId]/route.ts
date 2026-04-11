@@ -75,9 +75,20 @@ export async function POST(
     return NextResponse.json({ ok: true, reason: 'quota_exceeded' })
   }
 
-  // Parse body — UazAPI sends flat objects, NOT { event, data: {...} }
-  const body: UazAPIMessage = await req.json()
-  console.log(`[webhook] Agent ${agentId} — messageType: ${body.messageType}, fromMe: ${body.fromMe}, chatid: ${body.chatid}, status: ${body.status}`)
+  // Parse body — log raw text first to understand actual UazAPI payload
+  const rawText = await req.text()
+  console.log(`[webhook] RAW (${rawText.length} bytes):`, rawText.substring(0, 800))
+
+  let body: any = {}
+  try { body = JSON.parse(rawText) } catch { body = {} }
+
+  // If it's an array, take the first element
+  if (Array.isArray(body)) {
+    console.log(`[webhook] Body is ARRAY with ${body.length} items, taking body[0]`)
+    body = body[0] || {}
+  }
+
+  console.log(`[webhook] Agent ${agentId} — keys: ${Object.keys(body).join(', ')}`)
 
   // === CONNECTION EVENT ===
   // Connection payloads have status/connection but no chatid
