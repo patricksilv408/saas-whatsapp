@@ -3,40 +3,70 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { enqueueMessage } from '@/lib/queue'
 import { MessageJobData } from '@/types'
 
-// UazAPI WebhookEvent schema (from openapi spec):
-// { event: "message"|"connection"|"status"|"presence"|"group", instance: string, data: object }
-//
-// data for event="message" → Message schema:
-//   chatid, sender, senderName, fromMe, isGroup, messageType, text,
-//   messageid, id, messageTimestamp, content, wasSentByApi, ...
-//
-// data for event="connection" → { status: "connected"|"disconnected"|"open"|"close", ... }
+// UazAPI Webhook payload (confirmed via N8N workflow test data):
+// {
+//   EventType?: "messages" | "connection" | ...
+//   message?: {
+//     chatid, sender, senderName, fromMe, isGroup, messageType, text,
+//     messageid, id, messageTimestamp, content, wasSentByApi, mediaType, ...
+//   }
+//   chat?: { wa_chatid, wa_isGroup, wa_label, wa_name, wa_lastMessageType, ... }
+//   owner?: string
+//   token?: string
+//   instanceName?: string
+//   chatSource?: string
+//   // Legacy/alternate format (WebhookEvent schema):
+//   event?: string  // "message" | "connection"
+//   instance?: string
+//   data?: object
+// }
 
-interface UazAPIWebhookBody {
-  event?: string      // "message" | "connection" | "status" | "presence" | "group"
-  instance?: string
-  data?: {
-    // Message fields
-    id?: string
-    messageid?: string
-    chatid?: string
-    sender?: string
-    senderName?: string
-    isGroup?: boolean
-    fromMe?: boolean
-    messageType?: string
-    text?: string
-    messageTimestamp?: number
-    wasSentByApi?: boolean
-    content?: any
-    // Connection fields
-    status?: string
-    connection?: string
-    state?: string
-  }
+interface UazAPIMessage {
+  id?: string
+  messageid?: string
+  chatid?: string
+  sender?: string
+  senderName?: string
+  isGroup?: boolean
+  fromMe?: boolean
+  messageType?: string
+  text?: string
+  messageTimestamp?: number
+  wasSentByApi?: boolean
+  content?: any
+  mediaType?: string
+  groupName?: string
 }
 
+interface UazAPIChat {
+  wa_chatid?: string
+  wa_isGroup?: boolean
+  wa_label?: string | string[]
+  wa_name?: string
+  wa_lastMessageType?: string
+}
+
+interface UazAPIWebhookBody {
+  // Primary format (confirmed from N8N workflow production test data)
+  EventType?: string
+  message?: UazAPIMessage
+  chat?: UazAPIChat
+  owner?: string
+  token?: string
+  instanceName?: string
+  chatSource?: string
+  // Legacy WebhookEvent schema format (fallback)
+  event?: string
+  instance?: string
+  data?: any
+}
+
+// UazAPI sends messageType in PascalCase: TextMessage, AudioMessage, ImageMessage, etc.
 const IGNORED_MESSAGE_TYPES = new Set([
+  'ProtocolMessage', 'EphemeralMessage', 'ReactionMessage', 'PollUpdateMessage',
+  'StickerSyncRMRMessage', 'RequestPaymentMessage', 'DeclinePaymentRequestMessage',
+  'CancelPaymentRequestMessage', 'ViewOnceMessage', 'EncReactionMessage',
+  // lowercase fallbacks
   'protocolMessage', 'ephemeralMessage', 'reactionMessage', 'pollUpdateMessage',
 ])
 
@@ -67,9 +97,9 @@ export async function POST(
   const maxMessages = userProfile?.plan?.max_messages_month ?? Infinity
   if (userProfile?.messages_used_month >= maxMessages) return NextResponse.json({ ok: true, reason: 'quota_exceeded' })
 
-  // Parse body — log raw text to debug actual UazAPI payload format
+  // Parse body
   const rawText = await req.text()
-  console.log(`[webhook] RAW BODY (${rawText.length}b):`, rawText.substring(0, 1000))
+  console.log(`[webhook] RAW BODY (${rawText.length}b):`, rawText.substring(0, 800))
 
   let parsed: any
   try { parsed = JSON.parse(rawText) } catch (e) {
@@ -77,18 +107,29 @@ export async function POST(
     return NextResponse.json({ ok: true })
   }
 
-  console.log(`[webhook] isArray: ${Array.isArray(parsed)}, keys: ${Object.keys(parsed || {}).join(', ')}`)
-
+  // UazAPI can send arrays or single objects
   const body: UazAPIWebhookBody = Array.isArray(parsed) ? (parsed[0] || {}) : parsed
-  const event = body.event
-  const data = body.data || {}
 
-  console.log(`[webhook] event: "${event}", data keys: ${Object.keys(data).join(', ')}`)
+  const topKeys = Object.keys(body || {}).join(', ')
+  console.log(`[webhook] Top-level keys: ${topKeys}`)
+
+  // === DETECT EVENT TYPE ===
+  // UazAPI primary format uses body.message for message events
+  // Legacy format uses body.event / body.data
+  const hasMessage = !!(body.message && body.message.chatid)
+  const eventType = body.EventType || body.event || (hasMessage ? 'messages' : 'unknown')
+
+  console.log(`[webhook] EventType: "${eventType}", hasMessage: ${hasMessage}`)
 
   // === CONNECTION EVENT ===
-  if (event === 'connection') {
-    const state = data.status || data.connection || data.state
-    console.log(`[webhook] Connection state: ${state}`)
+  const isConnectionEvent =
+    eventType === 'connection' ||
+    (body.data && (body.data.status || body.data.connection || body.data.state))
+
+  if (isConnectionEvent) {
+    const connData = body.data || body
+    const state = connData.status || connData.connection || connData.state
+    console.log(`[webhook] Connection state: "${state}"`)
     if (state === 'open' || state === 'connected') {
       await admin.from('agents').update({ connection_status: 'connected' }).eq('id', agentId)
     } else if (state === 'close' || state === 'disconnected') {
@@ -105,19 +146,30 @@ export async function POST(
   }
 
   // === MESSAGE EVENT ===
-  if (event !== 'message') return NextResponse.json({ ok: true })
+  if (!hasMessage) {
+    console.log(`[webhook] Skipping — no message object (keys: ${topKeys})`)
+    return NextResponse.json({ ok: true })
+  }
 
-  const chatId = data.chatid || ''
-  const fromMe = data.fromMe ?? false
-  const messageType = data.messageType || ''
-  const text = data.text || ''
-  const isGroup = data.isGroup ?? chatId.endsWith('@g.us')
+  const msg = body.message!
+  const chat = body.chat || {}
+
+  const chatId = msg.chatid || ''
+  const fromMe = msg.fromMe ?? false
+  const messageType = msg.messageType || ''
+  const text = msg.text || ''
+  const isGroup = msg.isGroup ?? (chat as UazAPIChat).wa_isGroup ?? chatId.endsWith('@g.us')
+
+  console.log(`[webhook] msg — chatId: "${chatId}", fromMe: ${fromMe}, type: "${messageType}", text: "${text.substring(0, 80)}"`)
 
   if (!chatId || !messageType) {
     console.log(`[webhook] Skipping — no chatid or messageType`)
     return NextResponse.json({ ok: true })
   }
-  if (IGNORED_MESSAGE_TYPES.has(messageType)) return NextResponse.json({ ok: true })
+  if (IGNORED_MESSAGE_TYPES.has(messageType)) {
+    console.log(`[webhook] Skipping ignored type: ${messageType}`)
+    return NextResponse.json({ ok: true })
+  }
 
   // fromMe = agent owner sent manually → human handoff
   if (fromMe) {
@@ -161,8 +213,8 @@ export async function POST(
   // Detect media URL from content object if present
   let mediaUrl: string | null = null
   let mediaMimeType: string | null = null
-  if (data.content && typeof data.content === 'object') {
-    const c = data.content as any
+  if (msg.content && typeof msg.content === 'object') {
+    const c = msg.content as any
     mediaUrl = c.url || c.mediaUrl || null
     mediaMimeType = c.mimetype || c.mimeType || null
   }
@@ -172,15 +224,15 @@ export async function POST(
     userId: agent.user_id,
     chatId,
     phone,
-    pushName: data.senderName || null,
+    pushName: msg.senderName || null,
     isGroup,
     groupJid: isGroup ? chatId : null,
-    messageId: data.messageid || data.id || '',
+    messageId: msg.messageid || msg.id || '',
     messageType,
     content: text || null,
     mediaUrl,
     mediaMimeType,
-    receivedAt: data.messageTimestamp || Date.now(),
+    receivedAt: msg.messageTimestamp || Date.now(),
   }
 
   const debounceMs = (agent.message_debounce_seconds || 3) * 1000

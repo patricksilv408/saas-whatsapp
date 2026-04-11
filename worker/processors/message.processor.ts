@@ -82,7 +82,10 @@ export async function processMessage(data: JobData): Promise<void> {
   let imageBase64: string | null = null
   let receivedAudio = false
 
-  if (data.messageType === 'audioMessage' && agent.transcribe_audio) {
+  // UazAPI sends messageType in PascalCase (AudioMessage, ImageMessage, etc.)
+  const msgTypeLower = data.messageType?.toLowerCase() || ''
+
+  if ((msgTypeLower === 'audiomessage' || msgTypeLower === 'pttmessage') && agent.transcribe_audio) {
     try {
       const media = await uazapi.downloadMedia(data.messageId, data.chatId)
       resolvedText = await transcribeAudio(media.base64, media.mimetype, llmApiKey)
@@ -91,14 +94,14 @@ export async function processMessage(data: JobData): Promise<void> {
       console.error('Audio transcription failed:', e)
       resolvedText = '[Áudio não transcrito]'
     }
-  } else if (data.messageType === 'imageMessage' && agent.read_images) {
+  } else if (msgTypeLower === 'imagemessage' && agent.read_images) {
     try {
       const media = await uazapi.downloadMedia(data.messageId, data.chatId)
       imageBase64 = media.base64
     } catch (e) {
       console.error('Image download failed:', e)
     }
-  } else if (data.messageType === 'documentMessage' && agent.read_documents && data.mediaUrl) {
+  } else if (msgTypeLower === 'documentmessage' && agent.read_documents && data.mediaUrl) {
     try {
       const res = await fetch(data.mediaUrl)
       const buffer = await res.arrayBuffer()
@@ -372,11 +375,11 @@ export async function processMessage(data: JobData): Promise<void> {
     agent_id: data.agentId,
     customer_id: customer.id,
     direction: 'inbound',
-    content_type: data.messageType.includes('audio') ? 'audio' :
-      data.messageType.includes('image') ? 'image' :
-      data.messageType.includes('video') ? 'video' :
-      data.messageType.includes('document') ? 'document' :
-      data.messageType.includes('location') ? 'location' : 'text',
+    content_type: msgTypeLower.includes('audio') || msgTypeLower.includes('ptt') ? 'audio' :
+      msgTypeLower.includes('image') ? 'image' :
+      msgTypeLower.includes('video') ? 'video' :
+      msgTypeLower.includes('document') ? 'document' :
+      msgTypeLower.includes('location') ? 'location' : 'text',
     content: resolvedText || data.content,
     uazapi_message_id: data.messageId,
   }).select('id').single()
