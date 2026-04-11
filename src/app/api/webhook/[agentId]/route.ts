@@ -50,6 +50,7 @@ export async function POST(
 
   // Handle connection events (reconnection logic)
   const body: UazAPIWebhookEvent = await req.json()
+  console.log(`[webhook] BODY RAW:`, JSON.stringify(body).substring(0, 500))
   const { event, data } = body
   console.log(`[webhook] Agent ${agentId} — event: "${event}", messageType: ${data?.messageType}, fromMe: ${data?.key?.fromMe}`)
 
