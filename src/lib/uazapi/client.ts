@@ -89,8 +89,10 @@ export class UazAPIClient {
         url: webhookUrl,
         events,
         action: 'add',
+        enabled: true,
         addUrlEvents: false,
         addUrlTypesMessages: false,
+        excludeMessages: ['wasSentByApi'],
       }),
     })
   }
